@@ -22,9 +22,7 @@
           </button>
           <template #overlay>
             <a-menu @click="handleUserMenuClick">
-              <a-menu-item key="profile">
-                <EditOutlined /> 修改个人信息
-              </a-menu-item>
+              <a-menu-item key="profile"> <EditOutlined /> 修改个人信息 </a-menu-item>
               <a-menu-item key="logout">
                 <span class="logout-item"><LogoutOutlined /> 退出登录</span>
               </a-menu-item>
@@ -48,7 +46,15 @@
 import { computed, h, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { AppstoreOutlined, DownOutlined, EditOutlined, HomeOutlined, LogoutOutlined, TeamOutlined } from '@ant-design/icons-vue'
+import {
+  AppstoreOutlined,
+  CommentOutlined,
+  DownOutlined,
+  EditOutlined,
+  HomeOutlined,
+  LogoutOutlined,
+  TeamOutlined,
+} from '@ant-design/icons-vue'
 import type { MenuProps } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
@@ -80,6 +86,12 @@ const originItems = [
     label: '应用管理',
     title: '应用管理',
   },
+  {
+    key: '/admin/chatHistoryManage',
+    icon: () => h(CommentOutlined),
+    label: '对话管理',
+    title: '对话管理',
+  },
 ]
 
 // 过滤菜单项
@@ -106,7 +118,7 @@ const handleMenuClick: MenuProps['onClick'] = (e) => {
 const handleLogout = async () => {
   try {
     await userLogout()
-  } catch (e) {
+  } catch {
     // 即使接口失败也继续清理本地状态
   }
   loginUserStore.setLoginUser({ userName: '未登录' })
@@ -201,7 +213,9 @@ const handleEditSuccess = (updated: API.LoginUserVO) => {
   font-size: 14px;
   font-weight: 500;
   line-height: 40px;
-  transition: color 180ms ease, background-color 180ms ease;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease;
 }
 
 .menu :deep(.ant-menu-item::after),
@@ -240,7 +254,9 @@ const handleEditSuccess = (updated: API.LoginUserVO) => {
   background: var(--c-surface);
   cursor: pointer;
   font: inherit;
-  transition: border-color 180ms ease, box-shadow 180ms ease;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .user-trigger:hover {

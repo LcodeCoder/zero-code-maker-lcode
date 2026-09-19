@@ -10,6 +10,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons-vue'
 import { getAppById, deployApp } from '@/api/appController.ts'
+import { listAppChatHistory } from '@/api/chatHistoryController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { getAppPreviewUrl, getDeployUrl } from '@/constants/app.ts'
 import { API_BASE_URL } from '@/config/env.ts'
@@ -28,17 +29,30 @@ const app = ref<API.AppVO>({})
 
 // 是否为本人(仅本人可对话)
 const isOwner = computed(
-  () => !!app.value.userId && !!loginUserStore.loginUser.id &&
+  () =>
+    !!app.value.userId &&
+    !!loginUserStore.loginUser.id &&
     String(app.value.userId) === String(loginUserStore.loginUser.id),
 )
 
 // 消息列表
 interface ChatMessage {
+  key: string
   role: 'user' | 'ai'
   content: string
+  createTime?: string
   loading?: boolean
 }
 const messages = reactive<ChatMessage[]>([])
+
+const HISTORY_PAGE_SIZE = 10
+const historyLoading = ref(true)
+const loadingMoreHistory = ref(false)
+const hasMoreHistory = ref(false)
+const historyMessageCount = ref(0)
+const totalHistoryCount = ref<number>()
+const oldestCreateTime = ref<string>()
+const loadedHistoryKeys = new Set<string>()
 
 // 输入框
 const userInput = ref('')
@@ -54,6 +68,36 @@ const deployModalOpen = ref(false)
 
 const messageListRef = ref<HTMLElement>()
 let eventSource: EventSource | null = null
+let localMessageSequence = 0
+
+const createLocalMessageKey = () => `local-${Date.now()}-${localMessageSequence++}`
+
+const getHistoryMessageKey = (item: API.ChatHistory) => {
+  if (item.id !== undefined && item.id !== null) {
+    return `history-${item.id}`
+  }
+  return `history-${item.messageType || ''}-${item.createTime || ''}-${item.message || ''}`
+}
+
+const getMessageRole = (messageType?: string): ChatMessage['role'] => {
+  const normalizedType = messageType?.toLowerCase()
+  return normalizedType === 'ai' || normalizedType === 'assistant' ? 'ai' : 'user'
+}
+
+const toChatMessage = (item: API.ChatHistory): ChatMessage => ({
+  key: getHistoryMessageKey(item),
+  role: getMessageRole(item.messageType),
+  content: item.message || '',
+  createTime: item.createTime,
+})
+
+const sortHistoryByCreateTime = (records: API.ChatHistory[]) => {
+  return [...records].sort((a, b) => {
+    const timeCompare = (a.createTime || '').localeCompare(b.createTime || '')
+    if (timeCompare !== 0) return timeCompare
+    return String(a.id || '').localeCompare(String(b.id || ''))
+  })
+}
 
 // 滚动到底部
 const scrollToBottom = () => {
@@ -71,6 +115,7 @@ const loadApp = async () => {
     const res = await getAppById({ id: appId.value as unknown as number })
     if (res.data.code === 0 && res.data.data) {
       app.value = res.data.data
+      return true
     } else {
       message.error(res.data.message || '应用不存在')
       router.push('/')
@@ -78,6 +123,80 @@ const loadApp = async () => {
   } catch {
     message.error('加载应用信息失败')
     router.push('/')
+  }
+  return false
+}
+
+// 游标加载对话历史。接口返回最近消息，前端统一按创建时间升序展示。
+const loadChatHistory = async (loadMore = false) => {
+  if (loadMore) {
+    if (loadingMoreHistory.value || !hasMoreHistory.value || !oldestCreateTime.value) return false
+    loadingMoreHistory.value = true
+  } else {
+    historyLoading.value = true
+  }
+
+  const previousCursor = oldestCreateTime.value
+  const messageList = messageListRef.value
+  const previousScrollHeight = messageList?.scrollHeight ?? 0
+  const previousScrollTop = messageList?.scrollTop ?? 0
+
+  try {
+    const res = await listAppChatHistory({
+      appId: appId.value as unknown as number,
+      pageSize: HISTORY_PAGE_SIZE,
+      lastCreateTime: loadMore ? oldestCreateTime.value : undefined,
+    })
+    if (res.data.code !== 0 || !res.data.data) {
+      message.error(res.data.message || '加载对话历史失败')
+      return false
+    }
+
+    const records = sortHistoryByCreateTime(res.data.data.records ?? [])
+    const newMessages = records
+      .map(toChatMessage)
+      .filter((item) => !loadedHistoryKeys.has(item.key))
+
+    newMessages.forEach((item) => loadedHistoryKeys.add(item.key))
+    if (loadMore) {
+      messages.unshift(...newMessages)
+    } else {
+      messages.splice(0, messages.length, ...newMessages)
+    }
+
+    historyMessageCount.value += newMessages.length
+    if (!loadMore) {
+      historyMessageCount.value = newMessages.length
+    }
+
+    const totalRow = Number(res.data.data.totalRow ?? 0)
+    // 游标分页通常关闭 count 查询，此时 totalRow 会是 0，需要按本页数量判断是否还有数据。
+    totalHistoryCount.value = totalRow > 0 ? totalRow : undefined
+    const nextCursor = records[0]?.createTime
+    oldestCreateTime.value = nextCursor
+
+    if (totalHistoryCount.value !== undefined && Number.isFinite(totalHistoryCount.value)) {
+      hasMoreHistory.value = historyMessageCount.value < totalHistoryCount.value
+    } else {
+      hasMoreHistory.value = records.length >= HISTORY_PAGE_SIZE
+    }
+    if (!records.length || !newMessages.length || (loadMore && nextCursor === previousCursor)) {
+      hasMoreHistory.value = false
+    }
+
+    await nextTick()
+    if (loadMore && messageList) {
+      messageList.scrollTop = previousScrollTop + messageList.scrollHeight - previousScrollHeight
+    } else {
+      scrollToBottom()
+    }
+    return true
+  } catch {
+    message.error('加载对话历史失败，请稍后重试')
+    return false
+  } finally {
+    historyLoading.value = false
+    loadingMoreHistory.value = false
   }
 }
 
@@ -97,9 +216,14 @@ const sendMessage = (content: string) => {
   }
 
   // 追加用户消息
-  messages.push({ role: 'user', content: text })
+  messages.push({ key: createLocalMessageKey(), role: 'user', content: text })
   // 追加一条 AI 占位消息
-  const aiMessage = reactive<ChatMessage>({ role: 'ai', content: '', loading: true })
+  const aiMessage = reactive<ChatMessage>({
+    key: createLocalMessageKey(),
+    role: 'ai',
+    content: '',
+    loading: true,
+  })
   messages.push(aiMessage)
   scrollToBottom()
 
@@ -240,18 +364,18 @@ const openPreviewUrl = () => {
 }
 
 onMounted(async () => {
-  await loadApp()
-  // 加载历史:若应用已生成过,默认展示预览
-  if (app.value.codeGenType) {
+  const [appLoaded, historyLoaded] = await Promise.all([loadApp(), loadChatHistory()])
+  if (!appLoaded || !historyLoaded) return
+
+  const historyCount = totalHistoryCount.value ?? historyMessageCount.value
+  // 至少完成过一轮对话（用户消息 + AI 消息）时展示已生成网站。
+  if (historyCount >= 2 && app.value.codeGenType) {
     previewUrl.value = getAppPreviewUrl(app.value.codeGenType, appId.value)
   }
-  // 自动发送初始提示词(从主页创建后跳转过来)
-  if (route.query.auto === '1' && app.value.initPrompt && isOwner.value) {
-    // 自动对话前先清空预览,等待重新生成
-    previewUrl.value = ''
+
+  // 仅自己的全新应用自动发送初始提示词，不再依赖 URL 查询参数。
+  if (historyCount === 0 && app.value.initPrompt && isOwner.value) {
     sendMessage(app.value.initPrompt)
-    // 移除 auto 标记,避免刷新重复触发
-    router.replace({ path: route.path })
   }
 })
 
@@ -297,14 +421,28 @@ onBeforeUnmount(() => {
       <!-- 左侧对话区 -->
       <section class="chat-panel">
         <div ref="messageListRef" class="message-list">
+          <div v-if="historyLoading" class="history-status">
+            <a-spin size="small" />
+            <span>正在加载对话历史...</span>
+          </div>
+          <div v-else-if="hasMoreHistory" class="load-more-history">
+            <a-button
+              type="link"
+              size="small"
+              :loading="loadingMoreHistory"
+              @click="loadChatHistory(true)"
+            >
+              加载更多
+            </a-button>
+          </div>
           <a-empty
-            v-if="!messages.length"
+            v-if="!historyLoading && !messages.length"
             description="开始和 AI 对话,生成你的网站应用吧"
             class="empty-tip"
           />
           <div
-            v-for="(msg, index) in messages"
-            :key="index"
+            v-for="msg in messages"
+            :key="msg.key"
             class="message-item"
             :class="msg.role === 'user' ? 'message-user' : 'message-ai'"
           >
@@ -317,12 +455,7 @@ onBeforeUnmount(() => {
               >
                 <template #icon><UserOutlined /></template>
               </a-avatar>
-              <img
-                v-else
-                src="@/assets/code maker.png"
-                alt="AI"
-                class="ai-avatar-img"
-              />
+              <img v-else src="@/assets/code maker.png" alt="AI" class="ai-avatar-img" />
             </div>
             <div class="message-content">
               <LoadingOutlined v-if="msg.loading && !msg.content" spin />
@@ -373,12 +506,7 @@ onBeforeUnmount(() => {
       <section class="preview-panel">
         <div class="preview-header">
           <span class="preview-title">生成后的网页展示</span>
-          <a-button
-            v-if="previewUrl"
-            type="link"
-            size="small"
-            @click="openPreviewUrl"
-          >
+          <a-button v-if="previewUrl" type="link" size="small" @click="openPreviewUrl">
             新窗口打开
           </a-button>
         </div>
@@ -421,7 +549,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.header-right { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.header-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .chat-page {
   display: flex;
   flex-direction: column;
@@ -489,6 +622,8 @@ onBeforeUnmount(() => {
 .message-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -499,9 +634,22 @@ onBeforeUnmount(() => {
   margin: auto;
 }
 
+.history-status,
+.load-more-history {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--c-text-tertiary);
+  font-size: 13px;
+}
+
 .message-item {
   display: flex;
   gap: 10px;
+  width: fit-content;
+  min-width: 0;
   max-width: 92%;
 }
 
@@ -559,11 +707,16 @@ onBeforeUnmount(() => {
 }
 
 .message-content {
+  min-width: 0;
+  max-width: 100%;
   padding: 10px 14px;
   border-radius: 12px;
+  box-sizing: border-box;
   font-size: 14px;
   line-height: 1.6;
   color: #1f2937;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .message-user .message-content {
@@ -586,8 +739,11 @@ onBeforeUnmount(() => {
 
 /* ===== Markdown 渲染样式 ===== */
 .markdown-body {
+  min-width: 0;
+  max-width: 100%;
   font-size: 14px;
   line-height: 1.7;
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
@@ -621,6 +777,7 @@ onBeforeUnmount(() => {
 .markdown-body :deep(a) {
   color: #4f46e5;
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
 .markdown-body :deep(a:hover) {
@@ -629,19 +786,24 @@ onBeforeUnmount(() => {
 
 /* 行内代码 */
 .markdown-body :deep(code) {
+  max-width: 100%;
   padding: 2px 6px;
   font-size: 13px;
   background: rgba(0, 0, 0, 0.06);
   border-radius: 4px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* 代码块 */
 .markdown-body :deep(pre) {
+  max-width: 100%;
   margin: 8px 0;
   padding: 12px 14px;
   background: #f6f8fa;
   border-radius: 8px;
+  box-sizing: border-box;
   overflow-x: auto;
 }
 
@@ -663,12 +825,22 @@ onBeforeUnmount(() => {
   border-collapse: collapse;
   margin: 8px 0;
   width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
 }
 
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
   padding: 6px 10px;
   border: 1px solid #e5e7eb;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-body :deep(img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 /* ===== 输入框（composer） ===== */
@@ -695,7 +867,8 @@ onBeforeUnmount(() => {
   padding: 14px 60px 14px 16px !important;
   font-size: 15px;
   line-height: 1.6;
-  transition: border-color var(--t-base) var(--ease),
+  transition:
+    border-color var(--t-base) var(--ease),
     box-shadow var(--t-base) var(--ease);
 }
 
@@ -729,8 +902,10 @@ onBeforeUnmount(() => {
   background: var(--grad-primary) !important;
   border: none;
   box-shadow: var(--sh-primary);
-  transition: transform var(--t-base) var(--ease),
-    box-shadow var(--t-base) var(--ease), opacity var(--t-base) var(--ease);
+  transition:
+    transform var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease),
+    opacity var(--t-base) var(--ease);
 }
 
 .send-btn:not(:disabled):hover {

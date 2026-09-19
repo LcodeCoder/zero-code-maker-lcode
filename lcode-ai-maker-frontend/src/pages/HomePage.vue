@@ -18,7 +18,12 @@ import {
 } from '@ant-design/icons-vue'
 import { addApp, listMyAppByPage, listFeaturedAppByPage } from '@/api/appController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { CodeGenType, getAppPreviewUrl, getCodeGenTypeShortLabel, CODE_GEN_TYPE_OPTIONS } from '@/constants/app.ts'
+import {
+  CodeGenType,
+  getAppPreviewUrl,
+  getCodeGenTypeShortLabel,
+  CODE_GEN_TYPE_OPTIONS,
+} from '@/constants/app.ts'
 import AppManageActions from '@/components/AppManageActions.vue'
 import { useTypewriter } from '@/composables/useTypewriter'
 
@@ -136,11 +141,8 @@ const handleCreateApp = async () => {
   try {
     const res = await addApp({ initPrompt, codeGenType: selectedCodeGenType.value })
     if (res.data.code === 0 && res.data.data) {
-      // 跳转到对话页,并标记需要自动发送初始提示词
-      router.push({
-        path: `/app/chat/${res.data.data}`,
-        query: { auto: '1' },
-      })
+      // 对话页会根据历史记录判断是否自动发送初始提示词，无需 URL 标记。
+      router.push(`/app/chat/${res.data.data}`)
     } else {
       message.error(res.data.message || '创建应用失败')
     }
@@ -325,7 +327,11 @@ watch(
     </section>
 
     <div class="apps-container">
-      <section v-if="loginUserStore.loginUser.id" class="app-section" aria-labelledby="my-apps-title">
+      <section
+        v-if="loginUserStore.loginUser.id"
+        class="app-section"
+        aria-labelledby="my-apps-title"
+      >
         <div class="section-header">
           <div class="section-heading">
             <span class="section-eyebrow">YOUR WORKSPACE</span>
@@ -359,7 +365,10 @@ watch(
           <div v-else class="app-grid">
             <article v-for="app in myApps" :key="app.id" class="app-card">
               <RouterLink :to="`/app/chat/${app.id}`" class="app-card-link">
-                <div class="app-cover" :style="app.cover || previewUrlOf(app) ? {} : { background: gradientOf(app) }">
+                <div
+                  class="app-cover"
+                  :style="app.cover || previewUrlOf(app) ? {} : { background: gradientOf(app) }"
+                >
                   <img v-if="app.cover" :src="app.cover" :alt="app.appName" loading="lazy" />
                   <iframe
                     v-else-if="previewUrlOf(app)"
@@ -378,10 +387,14 @@ watch(
                   </div>
                 </div>
                 <div class="app-info">
-                  <div class="app-name">{{ app.appName || '未命名应用' }} <ArrowRightOutlined /></div>
+                  <div class="app-name">
+                    {{ app.appName || '未命名应用' }} <ArrowRightOutlined />
+                  </div>
                   <div class="app-desc">{{ descOf(app) }}</div>
                   <div class="app-footer is-solo">
-                    <span class="app-stat"><CalendarOutlined /> {{ formatDate(app.createTime) }}</span>
+                    <span class="app-stat"
+                      ><CalendarOutlined /> {{ formatDate(app.createTime) }}</span
+                    >
                   </div>
                 </div>
               </RouterLink>
@@ -429,7 +442,10 @@ watch(
             :to="`/app/chat/${app.id}`"
             class="app-card"
           >
-            <div class="app-cover" :style="app.cover || previewUrlOf(app) ? {} : { background: gradientOf(app) }">
+            <div
+              class="app-cover"
+              :style="app.cover || previewUrlOf(app) ? {} : { background: gradientOf(app) }"
+            >
               <img v-if="app.cover" :src="app.cover" :alt="app.appName" loading="lazy" />
               <iframe
                 v-else-if="previewUrlOf(app)"
@@ -478,9 +494,20 @@ watch(
 </template>
 
 <style scoped>
-.my-app-search { max-width: 360px; margin-bottom: 20px; }
-.app-card-link { display: block; color: inherit; text-decoration: none; }
-.app-management { display: flex; justify-content: flex-end; padding: 0 20px 16px; }
+.my-app-search {
+  max-width: 360px;
+  margin-bottom: 20px;
+}
+.app-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.app-management {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 20px 16px;
+}
 
 .home-page {
   max-width: 1160px;
@@ -558,14 +585,20 @@ watch(
   border: 1px solid var(--c-border-strong);
   border-radius: 22px;
   background: var(--c-surface);
-  box-shadow: 0 16px 48px -20px var(--c-border-focus), var(--sh-sm);
+  box-shadow:
+    0 16px 48px -20px var(--c-border-focus),
+    var(--sh-sm);
   text-align: left;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
 }
 
 .prompt-box:focus-within {
   border-color: var(--c-border-focus);
-  box-shadow: var(--ring-focus), 0 16px 48px -20px var(--c-border-focus);
+  box-shadow:
+    var(--ring-focus),
+    0 16px 48px -20px var(--c-border-focus);
 }
 
 .workspace-caption {
@@ -656,7 +689,10 @@ watch(
   font: inherit;
   font-size: 12px;
   cursor: pointer;
-  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
 }
 
 .suggestion-tag:hover {
@@ -784,7 +820,9 @@ watch(
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color 180ms ease, color 180ms ease;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease;
 }
 
 .section-action:hover,
@@ -853,7 +891,10 @@ watch(
   background: var(--c-surface);
   box-shadow: var(--sh-xs);
   text-decoration: none;
-  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease,
+    border-color 200ms ease;
 }
 
 .app-card:hover {
@@ -1115,7 +1156,9 @@ watch(
 .mode-switch :deep(.ant-segmented-thumb) {
   border-radius: var(--r-sm);
   background: var(--c-surface);
-  box-shadow: var(--sh-sm), inset 0 0 0 1px var(--c-border);
+  box-shadow:
+    var(--sh-sm),
+    inset 0 0 0 1px var(--c-border);
 }
 
 .mode-switch :deep(.ant-segmented-item:has(input:focus-visible)) {
@@ -1145,7 +1188,6 @@ watch(
     animation: none !important;
   }
 }
-
 
 @media (max-width: 900px) {
   .app-grid {
