@@ -4,6 +4,7 @@ import com.commul.ailcode.ai.model.HtmlCodeResult;
 import com.commul.ailcode.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 import reactor.core.publisher.Flux;
 
@@ -56,5 +57,5 @@ public interface AiCodeGeneratorService {
      */
     // 这个flux是个数据流，会不断的产生一个新的对象
     @SystemMessage(fromResource = "prompt/VueProject.md")
-    Flux<String> generateVueProjectCodeStream(@MemoryId long appId, @UserMessage  String prompt);
+    TokenStream generateVueProjectCodeStream(@MemoryId long appId, @UserMessage  String prompt);
 }

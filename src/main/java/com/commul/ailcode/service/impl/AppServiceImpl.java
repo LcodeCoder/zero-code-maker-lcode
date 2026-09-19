@@ -7,6 +7,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.commul.ailcode.constant.AppConstant;
 import com.commul.ailcode.core.AiCodeGeneratorFacade;
+import com.commul.ailcode.core.handler.StreamHandlerExecutor;
 import com.commul.ailcode.exception.BusinessException;
 import com.commul.ailcode.exception.ErrorCode;
 import com.commul.ailcode.exception.ThrowUtils;
@@ -57,8 +58,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private UserService userService;
-    @Autowired
+
+    @Resource
     private ChatHistoryService chatHistoryService;
+
+    @Resource
+    private StreamHandlerExecutor streamHandlerExecutor;
 
     @Override
     public Long addApp(AppAddRequest appAddRequest, User loginUser) {
@@ -251,19 +256,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Flux<String> codeFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(prompt, codeGenType, appId);
 
         // 7.手机ai响应的内容，并且在完成对话后保存对话内容到数据库
-        StringBuilder aiResponseBuilder = new StringBuilder();
-        return codeFlux.map(content -> {
-            // 实时收集ai响应的内容
-            aiResponseBuilder.append(content);
-            return content;
-        }).doOnComplete(() -> {
-            // 流式返回之后，保存对话消息到历史中
-            chatHistoryService.addChatMessage(appId, aiResponseBuilder.toString(), ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-        }).doOnError(error -> {
-            // 如果ai回复失败，也需要保存记录到数据库中
-            String errorMessgae = "ai 返回失败：" + error.getMessage();
-            chatHistoryService.addChatMessage(appId, errorMessgae, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-        });
+        return streamHandlerExecutor.doExecute(codeFlux, chatHistoryService, appId, loginUser, codeGenType);
     }
 
     @Override
