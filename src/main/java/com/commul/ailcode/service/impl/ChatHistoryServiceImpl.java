@@ -135,8 +135,6 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Override
     public int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory, int maxCount) {
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
-        ThrowUtils.throwIf(maxCount <= 0 || maxCount >= 20, ErrorCode.PARAMS_ERROR, "最大数量必须在1-100之间");
         try {
             // 直接构造查询条件，起点为1，而不是0，用于排除新的用户信息
             QueryWrapper queryWrapper = QueryWrapper.create()
