@@ -88,7 +88,7 @@ public class MailController {
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, "utf-8");
             helper.setSubject("【Lcode Maker】您的验证码");
             helper.setTo(mail);
-            helper.setFrom(sendMail);
+            helper.setFrom(sendMail, "Lcode Maker 团队");
 
             String html = buildVerifyCodeHtml(code, CODE_EXPIRE_MINUTES);
             helper.setText(html, true); // true = HTML
