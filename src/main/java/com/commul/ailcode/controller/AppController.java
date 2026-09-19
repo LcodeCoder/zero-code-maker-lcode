@@ -11,6 +11,7 @@ import com.commul.ailcode.exception.BusinessException;
 import com.commul.ailcode.exception.ErrorCode;
 import com.commul.ailcode.exception.ThrowUtils;
 import com.commul.ailcode.model.dto.app.AppAddRequest;
+import com.commul.ailcode.model.dto.app.AppDeployRequest;
 import com.commul.ailcode.model.dto.app.AppEditRequest;
 import com.commul.ailcode.model.dto.app.AppQueryRequest;
 import com.commul.ailcode.model.dto.app.AppUpdateRequest;
@@ -63,12 +64,19 @@ public class AppController {
         User loginUser = userService.getLoginUser(request);
 
         // 调用服务生成代码（SSE流式返回 ）
-        Flux<String> contextFlux = appService.chatToGenCode(appId, message, loginUser);
+        Flux<String> contextFlux = appService.chatToGenCode(appId, message, loginUser); // 直接返回flux会造成空格丢失
         return contextFlux
                 .map(context -> {
                     Map<String, String> wrapper = Map.of("l", context);
                     String jsonStr = JSONUtil.toJsonStr(wrapper);
                     return ServerSentEvent.<String>builder()
+                            /**
+                             * 1. **自动拼装 SSE 协议文本**
+                             * SSE 不是随便返回字符串，浏览器 `EventSource` 只能识别固定格式：
+                             * data: {"l":"当前chunk内容"}\n\n
+                             * 你手动拼 `data:`、换行符、消息分隔符很容易出错。
+                             * `ServerSentEvent.builder().data(jsonStr).build()` 内部自动帮你生成这套标准 SSE 报文。
+                             */
                             .data(jsonStr)
                             .build();
                 })
@@ -76,7 +84,15 @@ public class AppController {
                         // 发送结束事件
                         ServerSentEvent.<String>builder()
                                 .event("finish")
-                                .data("")
+                                .data("done")
+                                .build()
+                ))
+                .onErrorResume(error -> Mono.just(
+                        ServerSentEvent.<String>builder()
+                                .event("generation_error")
+                                .data(JSONUtil.toJsonStr(Map.of("message",
+                                        error instanceof BusinessException ? error.getMessage()
+                                                : "网页生成失败，请稍后重试")))
                                 .build()
                 ));
     }
@@ -184,6 +200,23 @@ public class AppController {
         return ResultUtils.success(getAppVOPage(appPage));
     }
 
+    /**
+     * 部署当前用户自己的应用
+     *
+     * @param appDeployRequest 部署请求
+     * @param request          请求
+     * @return 部署可访问的 URL
+     */
+    @PostMapping("/deploy")
+    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest, HttpServletRequest request) {
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        Long appId = appDeployRequest.getAppId();
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        User loginUser = userService.getLoginUser(request);
+        String deployUrl = appService.deployApp(appId, loginUser);
+        return ResultUtils.success(deployUrl);
+    }
+
     // endregion
 
     // region 管理员端接口
@@ -227,17 +260,17 @@ public class AppController {
      * 管理员分页查询应用列表（支持根据除时间外的任意字段查询，每页数量不限）
      *
      * @param appQueryRequest 查询请求
-     * @return 应用分页
+     * @return 应用视图分页（含创建者信息）
      */
     @PostMapping("/list/page")
     @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
-    public BaseResponse<Page<App>> listAppByPage(@RequestBody AppQueryRequest appQueryRequest) {
+    public BaseResponse<Page<AppVO>> listAppByPage(@RequestBody AppQueryRequest appQueryRequest) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
         long pageNum = appQueryRequest.getPageNum();
         long pageSize = appQueryRequest.getPageSize();
         QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
         Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
-        return ResultUtils.success(appPage);
+        return ResultUtils.success(getAppVOPage(appPage));
     }
 
     // endregion

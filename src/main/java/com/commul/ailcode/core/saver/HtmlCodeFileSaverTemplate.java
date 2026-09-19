@@ -2,6 +2,7 @@ package com.commul.ailcode.core.saver;
 
 import cn.hutool.core.util.StrUtil;
 import com.commul.ailcode.ai.model.HtmlCodeResult;
+import com.commul.ailcode.core.parser.HtmlCodeParser;
 import com.commul.ailcode.exception.BusinessException;
 import com.commul.ailcode.exception.ErrorCode;
 import com.commul.ailcode.model.enums.CodeGenTypeEnum;
@@ -31,5 +32,7 @@ public class HtmlCodeFileSaverTemplate extends CodeFileSaverTemplate<HtmlCodeRes
         if (StrUtil.isBlank(result.getHtmlCode())) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "HTML代码内容不能为空");
         }
+        // 非流式生成也需要提取并验证，避免直接写入说明文字或截断代码。
+        result.setHtmlCode(new HtmlCodeParser().parseCode(result.getHtmlCode()).getHtmlCode());
     }
 }

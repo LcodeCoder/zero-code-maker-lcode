@@ -13,28 +13,31 @@
 
 <style scoped>
 .footer {
-  background: #f0f2f5;
+  background: var(--c-surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--c-border);
   text-align: center;
-  padding: 24px 0;
-  position: sticky;
-  bottom: 0;
+  padding: 22px 0;
   width: 100%;
   margin-top: auto;
 }
 
 .footer-content {
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--c-text-tertiary);
   font-size: 14px;
+  letter-spacing: 0.01em;
 }
 
 .footer-content a {
-  color: #1890ff;
+  color: var(--c-primary);
+  font-weight: 500;
   text-decoration: none;
-  transition: color 0.3s;
+  transition: color var(--t-base) var(--ease);
 }
 
 .footer-content a:hover {
-  color: #40a9ff;
+  color: var(--c-accent-deep);
   text-decoration: underline;
 }
 

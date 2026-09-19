@@ -16,6 +16,7 @@ import java.io.File;
 public class CodeFileSaver {
 
     // 文件保存目录
+//    System.getProperty("user.dir") 获取当前项目的路径
     public static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir") + "/tmp/cde_output/";
 
     // 保存HTML网页代码

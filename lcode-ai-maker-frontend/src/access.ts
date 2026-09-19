@@ -2,10 +2,8 @@ import { useLoginUserStore } from '@/stores/loginUser.ts'
 import router from '@/router'
 import { message } from 'ant-design-vue'
 
-
-
 // 是否为首次获取登陆用户
-let firstFetchLoginUser: boolean = true;
+let firstFetchLoginUser: boolean = true
 
 /**
  * 全局权限校验
@@ -21,6 +19,11 @@ router.beforeEach(async (to, from, next) => {
   }
 
   const currentUrl = to.fullPath
+  if (to.path.startsWith('/app/edit/') && !loginUser?.id) {
+    message.warning('请先登录')
+    next({ path: '/user/login', query: { redirect: to.fullPath } })
+    return
+  }
   if (currentUrl.startsWith('/admin')) {
     if (!loginUser || loginUser.userRole !== 'admin') {
       message.error('没有权限')

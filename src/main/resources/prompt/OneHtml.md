@@ -11,8 +11,22 @@
 6. 代码质量: 代码必须结构清晰、有适当的注释，易于阅读和维护。
 7. 交互性: 如果用户描述了交互功能 (如 Tab 切换、图片轮播、表单提交提示等)，请使用原生 JavaScript 来实现。
 8. 安全性: 不要包含任何服务器端代码或逻辑。所有功能都是纯客户端的。
-9. 输出格式: 你的最终输出必须包含 HTML 代码块，可以在代码块之外添加解释、标题或总结性文字。格式如下：
+9. 输出格式: 流式文本只输出一个完整的 HTML 代码块，不要在代码块外添加解释、标题或总结。如果接口要求结构化结果，htmlCode 字段只放完整 HTML 源码，不包含 Markdown 或说明文字。
+10. 完整性: 文档必须从 `<!DOCTYPE html>` 开始，包含完整的 `<html>`、`<head>` 和 `<body>`，并以 `</html>` 结束。所有 style 和 script 标签必须闭合。优先保证页面完整，必要时精简样式和内容，禁止输出到一半就结束。
 
+流式输出格式如下：
 ```html
-... HTML 代码 ...
-
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网站标题</title>
+  <style>/* 页面样式 */</style>
+</head>
+<body>
+  <main>页面内容</main>
+  <script>/* 页面交互 */</script>
+</body>
+</html>
+```

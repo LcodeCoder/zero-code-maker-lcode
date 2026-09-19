@@ -1,23 +1,25 @@
 <template>
   <a-layout-header class="header">
     <div class="header-content">
-      <div class="logo-section" @click="handleLogoClick">
+      <RouterLink class="logo-section" to="/" aria-label="Lcode Maker 首页">
         <img src="@/assets/code maker.png" alt="logo" class="logo-img" />
-        <span class="site-title">Lcode Maker</span>
-      </div>
+        <span class="site-title">Lcode <span class="brand-accent">Maker</span></span>
+      </RouterLink>
       <a-menu
-        v-model:selectedKeys="selectedKeys"
+        :selected-keys="selectedKeys"
         mode="horizontal"
         :items="menuItems"
         class="menu"
+        aria-label="主导航"
         @click="handleMenuClick"
       />
       <div class="user-section">
         <a-dropdown v-if="loginUserStore.loginUser.id" :trigger="['click']">
-          <div class="user-trigger" @click.prevent>
+          <button type="button" class="user-trigger" aria-label="打开用户菜单" @click.prevent>
             <a-avatar :size="32" :src="loginUserStore.loginUser.userAvatar" />
             <span class="user-name">{{ loginUserStore.loginUser.userName }}</span>
-          </div>
+            <DownOutlined class="user-chevron" />
+          </button>
           <template #overlay>
             <a-menu @click="handleUserMenuClick">
               <a-menu-item key="profile">
@@ -44,9 +46,9 @@
 
 <script setup lang="ts">
 import { computed, h, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { message, Modal } from 'ant-design-vue'
-import { EditOutlined, HomeOutlined, LogoutOutlined } from '@ant-design/icons-vue'
+import { AppstoreOutlined, DownOutlined, EditOutlined, HomeOutlined, LogoutOutlined, TeamOutlined } from '@ant-design/icons-vue'
 import type { MenuProps } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
@@ -55,9 +57,9 @@ import EditProfileModal from '@/components/EditProfileModal.vue'
 // 获取登陆用户信息
 const loginUserStore = useLoginUserStore()
 const router = useRouter()
-const selectedKeys = ref<string[]>(['/'])
+const route = useRoute()
+const selectedKeys = computed(() => [route.path])
 const editVisible = ref(false)
-// 菜单配置项
 // 菜单配置项
 const originItems = [
   {
@@ -68,8 +70,15 @@ const originItems = [
   },
   {
     key: '/admin/userManage',
+    icon: () => h(TeamOutlined),
     label: '用户管理',
     title: '用户管理',
+  },
+  {
+    key: '/admin/appManage',
+    icon: () => h(AppstoreOutlined),
+    label: '应用管理',
+    title: '应用管理',
   },
 ]
 
@@ -92,10 +101,6 @@ const menuItems = computed<MenuProps['items']>(() => filterMenus(originItems))
 
 const handleMenuClick: MenuProps['onClick'] = (e) => {
   router.push(e.key as string)
-}
-
-const handleLogoClick = () => {
-  router.push('/')
 }
 
 const handleLogout = async () => {
@@ -129,218 +134,222 @@ const handleEditSuccess = (updated: API.LoginUserVO) => {
 
 <style scoped>
 .header {
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  padding: 0 32px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   position: sticky;
   top: 0;
   z-index: 100;
+  height: auto;
+  padding: 0 32px;
+  line-height: normal;
+  background: var(--c-surface-glass-strong);
+  border-bottom: 1px solid var(--c-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .header-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 40px;
   max-width: 1400px;
+  min-height: 76px;
   margin: 0 auto;
-  height: 72px;
 }
 
 .logo-section {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
   flex-shrink: 0;
-  cursor: pointer;
-  user-select: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 8px 12px;
-  border-radius: 12px;
-  margin-left: -12px;
-}
-
-.logo-section:hover {
-  background: transparent;
-  transform: translateY(-1px);
-}
-
-.logo-section:active {
-  transform: translateY(0);
+  gap: 10px;
+  padding: 4px 0;
+  border-radius: var(--r-sm);
+  text-decoration: none;
 }
 
 .logo-img {
-  height: 42px;
-  width: auto;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.08));
-  animation: logo-float 2.8s ease-in-out infinite;
-}
-
-@keyframes logo-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .logo-img {
-    animation: none;
-  }
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
 }
 
 .site-title {
-  font-family: 'Poppins', 'HarmonyOS Sans SC', 'PingFang SC', sans-serif;
-  font-size: 22px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #1677ff 0%, #7c3aed 48%, #06b6d4 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--c-text);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
   white-space: nowrap;
-  letter-spacing: 0.03em;
-  text-shadow: 0 8px 24px rgba(22, 119, 255, 0.18);
+}
+
+.brand-accent {
+  color: var(--c-primary);
 }
 
 .menu {
   flex: 1;
-  border: none;
-  line-height: 1;
-  margin: 0 32px;
   min-width: 0;
+  border: 0;
+  line-height: 40px;
   background: transparent;
 }
 
-.menu :deep(.ant-menu-item) {
+.menu :deep(.ant-menu-item),
+.menu :deep(.ant-menu-submenu) {
   height: 40px;
-  line-height: 40px;
-  margin: 0 4px !important;
-  padding: 0 18px !important;
-  font-size: 15px;
+  margin-inline: 3px;
+  padding-inline: 16px;
+  border-radius: var(--r-md);
+  color: var(--c-text-secondary);
+  font-size: 14px;
   font-weight: 500;
-  color: #4b5563;
-  border-radius: 20px;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 40px;
+  transition: color 180ms ease, background-color 180ms ease;
+}
+
+.menu :deep(.ant-menu-item::after),
+.menu :deep(.ant-menu-submenu::after) {
+  display: none;
+}
+
+.menu :deep(.ant-menu-item:hover),
+.menu :deep(.ant-menu-submenu:hover) {
+  color: var(--c-primary);
+  background: var(--c-surface-alt);
+}
+
+.menu :deep(.ant-menu-item-selected),
+.menu :deep(.ant-menu-item-selected:hover) {
+  color: var(--c-primary);
+  background: var(--c-info-bg);
 }
 
 .menu :deep(.ant-menu-item .anticon) {
   font-size: 16px;
-  margin-right: 6px;
-}
-
-.menu :deep(.ant-menu-item:hover) {
-  color: #4f46e5;
-  background: rgba(79, 70, 229, 0.08) !important;
-}
-
-.menu :deep(.ant-menu-item-selected) {
-  color: #fff !important;
-  font-weight: 600;
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
-}
-
-.menu :deep(.ant-menu-item-selected:hover) {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
-}
-
-.menu :deep(.ant-menu-item-selected::after) {
-  display: none;
 }
 
 .user-section {
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .user-trigger {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px 6px 6px;
-  border-radius: 22px;
+  gap: 9px;
+  padding: 5px 11px 5px 5px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-pill);
+  background: var(--c-surface);
   cursor: pointer;
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font: inherit;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .user-trigger:hover {
-  transform: translateY(-2px);
-}
-
-.user-trigger:active {
-  transform: translateY(0);
+  border-color: var(--c-border-focus);
+  box-shadow: var(--sh-sm);
 }
 
 .user-name {
-  font-size: 14px;
+  max-width: 128px;
+  overflow: hidden;
+  color: var(--c-text-secondary);
+  font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.user-chevron {
+  color: var(--c-text-tertiary);
+  font-size: 10px;
+}
+
+.logo-section:focus-visible,
+.user-trigger:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 4px;
+}
+
 .logout-item {
-  color: #ef4444;
+  color: var(--c-danger);
 }
 
 .user-section :deep(.ant-btn-primary) {
-  height: 40px;
-  line-height: 1;
-  padding: 0 24px;
-  border-radius: 20px;
+  height: 38px;
+  padding: 0 22px;
+  border-radius: var(--r-md);
+  font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.user-section :deep(.ant-btn-primary:hover) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
-}
-
-.user-section :deep(.ant-btn-primary:active) {
-  transform: translateY(0);
+  box-shadow: var(--sh-xs);
 }
 
 @media (max-width: 768px) {
   .header {
-    padding: 0 16px;
+    padding: 0 20px;
   }
 
   .header-content {
-    height: 64px;
-  }
-
-  .logo-section {
-    gap: 10px;
-    padding: 6px 10px;
-    margin-left: -10px;
-  }
-
-  .logo-img {
-    height: 36px;
+    gap: 16px;
+    min-height: 68px;
   }
 
   .site-title {
     font-size: 18px;
   }
 
-  .menu {
-    margin: 0 12px;
+  .menu :deep(.ant-menu-item),
+  .menu :deep(.ant-menu-submenu) {
+    padding-inline: 12px;
   }
 
-  .menu :deep(.ant-menu-item) {
-    padding: 0 14px !important;
-    font-size: 14px;
+  .user-name {
+    max-width: 80px;
+  }
+}
+
+@media (max-width: 560px) {
+  .header {
+    padding: 0 16px;
+  }
+
+  .header-content {
+    flex-wrap: wrap;
+    gap: 0 12px;
+    padding-top: 12px;
+  }
+
+  .logo-img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .menu {
+    order: 3;
+    flex-basis: 100%;
+    margin-top: 10px;
+    padding: 8px 0;
+    border-top: 1px solid var(--c-border);
+  }
+
+  .menu :deep(.ant-menu-item),
+  .menu :deep(.ant-menu-submenu) {
+    margin-inline: 0 4px;
+  }
+
+  .user-name {
+    max-width: 64px;
   }
 
   .user-section :deep(.ant-btn-primary) {
-    height: 36px;
-    padding: 0 20px;
-    font-size: 14px;
+    height: 34px;
+    padding-inline: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu :deep(.ant-menu-item),
+  .menu :deep(.ant-menu-submenu),
+  .user-trigger {
+    transition: none;
   }
 }
 </style>

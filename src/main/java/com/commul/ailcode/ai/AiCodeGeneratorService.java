@@ -22,6 +22,7 @@ public interface AiCodeGeneratorService {
      * @param prompt 提示
      * @return 代码
      */
+    // 这个flux是个数据流，会不断的产生一个新的对象
     @SystemMessage(fromResource = "prompt/OneHtml.md")
     Flux<String> generateHtmlCodeStream(String prompt);
 
@@ -31,6 +32,7 @@ public interface AiCodeGeneratorService {
      * @param prompt 提示
      * @return 代码
      */
+    // 这个flux是个数据流，会不断的产生一个新的对象
     @SystemMessage(fromResource = "prompt/MoreFile.md")
     Flux<String> generateMultiFileCodeStream(String prompt);
 

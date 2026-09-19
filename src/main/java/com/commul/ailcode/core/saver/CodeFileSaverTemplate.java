@@ -3,9 +3,11 @@ package com.commul.ailcode.core.saver;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.commul.ailcode.constant.AppConstant;
 import com.commul.ailcode.exception.BusinessException;
 import com.commul.ailcode.exception.ErrorCode;
 import com.commul.ailcode.exception.ThrowUtils;
+import com.commul.ailcode.model.entity.App;
 import com.commul.ailcode.model.enums.CodeGenTypeEnum;
 
 import java.io.File;
@@ -18,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 public abstract class CodeFileSaverTemplate<T> {
 
     // 文件保存根目录
-    protected static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
+    protected static final String FILE_SAVE_ROOT_DIR = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
     /**
      * 模板方法：保存代码的标准流程
