@@ -7,6 +7,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.commul.ailcode.constant.AppConstant;
 import com.commul.ailcode.core.AiCodeGeneratorFacade;
+import com.commul.ailcode.core.builder.VueProjectBuilder;
 import com.commul.ailcode.core.handler.StreamHandlerExecutor;
 import com.commul.ailcode.exception.BusinessException;
 import com.commul.ailcode.exception.ErrorCode;
@@ -65,6 +66,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
 
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
+
+
     @Override
     public Long addApp(AppAddRequest appAddRequest, User loginUser) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR, "请求参数为空");
@@ -73,8 +78,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String initPrompt = appAddRequest.getInitPrompt();
         ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "应用初始化 prompt 不能为空");
 
+        // 统一校验并保存标准生成类型，兼容旧客户端传递的 vue。
+        String requestedCodeGenType = appAddRequest.getCodeGenType();
+        CodeGenTypeEnum codeGenType = StrUtil.isBlank(requestedCodeGenType)
+                ? CodeGenTypeEnum.HTML
+                : CodeGenTypeEnum.getEnumByValue(requestedCodeGenType);
+        ThrowUtils.throwIf(codeGenType == null, ErrorCode.PARAMS_ERROR,
+                "不支持的代码生成类型: " + requestedCodeGenType);
+
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
+        app.setCodeGenType(codeGenType.getValue());
         app.setUserId(loginUser.getId());
         app.setCreateTime(LocalDateTime.now());
         // 应用名称未指定时，取 initPrompt 前 12 位作为默认名称
@@ -127,6 +141,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(app == null, ErrorCode.PARAMS_ERROR);
         AppVO appVO = new AppVO();
         BeanUtils.copyProperties(app, appVO);
+        // 对历史数据中的 vue 等旧值进行标准化，保证前端预览目录始终使用 vue_project。
+        CodeGenTypeEnum codeGenType = CodeGenTypeEnum.getEnumByValue(app.getCodeGenType());
+        if (codeGenType != null) {
+            appVO.setCodeGenType(codeGenType.getValue());
+        }
         // 填充创建者信息（单查）
         if (app.getUserId() != null) {
             User user = userService.getById(app.getUserId());
@@ -247,7 +266,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
         // 4.获取代码生成类型
         CodeGenTypeEnum codeGenType = CodeGenTypeEnum.getEnumByValue(app.getCodeGenType());
-        ThrowUtils.throwIf(codeGenType == null, ErrorCode.PARAMS_ERROR, "代码生成类型错误");
+        ThrowUtils.throwIf(codeGenType == null, ErrorCode.PARAMS_ERROR,
+                "代码生成类型错误: " + app.getCodeGenType());
 
         // 5.调用ai前，保护用户信息在数据库中
         chatHistoryService.addChatMessage(appId, prompt, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
@@ -278,14 +298,32 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             deployKey = RandomUtil.randomString(6);
         }
         // 5. 获取代码生成类型，构建源目录路径
-        String codeGenType = app.getCodeGenType();
-        String sourceDirName = codeGenType + "_" + appId;
+        CodeGenTypeEnum codeGenType = CodeGenTypeEnum.getEnumByValue(app.getCodeGenType());
+        ThrowUtils.throwIf(codeGenType == null, ErrorCode.PARAMS_ERROR,
+                "代码生成类型错误: " + app.getCodeGenType());
+        String sourceDirName = codeGenType.getValue() + "_" + appId;
         String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
         // 6. 检查源目录是否存在
         File sourceDir = new File(sourceDirPath);
         if (!sourceDir.exists() || !sourceDir.isDirectory()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
         }
+        // vue 项目特殊处理：执行构建
+        if (codeGenType == CodeGenTypeEnum.VUE) {
+            // vue 项目需要构建
+            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDirPath);
+            if (!buildSuccess) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：Vue 项目构建失败");
+            }
+            // 检查 dist 项目是否存在
+            File distDir = new File(sourceDir, "dist");
+            if (!distDir.exists() || !distDir.isDirectory()) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：Vue 项目构建成功，但 dist 目录不存在");
+            }
+            // 构建完成之后，需要将构建后的文件复制到部署目录
+            sourceDir = distDir;
+        }
+
         // 7. 复制文件到部署目录
         String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
         try {

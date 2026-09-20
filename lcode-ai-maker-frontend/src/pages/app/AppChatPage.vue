@@ -12,7 +12,7 @@ import {
 import { getAppById, deployApp } from '@/api/appController.ts'
 import { listAppChatHistory } from '@/api/chatHistoryController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { getAppPreviewUrl, getDeployUrl } from '@/constants/app.ts'
+import { CodeGenType, getAppPreviewUrl, getDeployUrl } from '@/constants/app.ts'
 import { API_BASE_URL } from '@/config/env.ts'
 import { renderMarkdown } from '@/utils/markdown.ts'
 import 'highlight.js/styles/github.css'
@@ -61,6 +61,9 @@ const generating = ref(false)
 // 预览地址(生成完成后展示)
 const previewUrl = ref('')
 const previewError = ref('')
+const previewBuilding = ref(false)
+const previewStatusText = ref('')
+const previewFingerprint = ref('')
 // 部署相关
 const deploying = ref(false)
 const deployUrl = ref('')
@@ -69,8 +72,94 @@ const deployModalOpen = ref(false)
 const messageListRef = ref<HTMLElement>()
 let eventSource: EventSource | null = null
 let localMessageSequence = 0
+let previewCheckSequence = 0
+
+const VUE_PREVIEW_CHECK_INTERVAL = 2000
+const VUE_PREVIEW_CHECK_TIMEOUT = 8 * 60 * 1000
 
 const createLocalMessageKey = () => `local-${Date.now()}-${localMessageSequence++}`
+
+/** 等待指定时长，用于控制 Vue 构建产物的轮询频率。 */
+const delay = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds))
+
+/** 为预览地址增加时间戳，确保 iframe 加载最新一次生成的构建产物。 */
+const withCacheBuster = (url: string) => {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}t=${Date.now()}`
+}
+
+/** 终止当前预览检查，避免新一轮生成被旧的轮询结果覆盖。 */
+const cancelPreviewCheck = () => {
+  previewCheckSequence += 1
+  previewBuilding.value = false
+  previewStatusText.value = ''
+}
+
+/** 获取 Vue 构建入口内容，用于判断产物是否可用以及是否已更新。 */
+const getPreviewFingerprint = async (url: string) => {
+  try {
+    const response = await fetch(withCacheBuster(url), {
+      method: 'GET',
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    return response.ok ? await response.text() : ''
+  } catch {
+    return ''
+  }
+}
+
+/** 展示普通生成结果，或等待 Vue 工程异步构建完成后再展示 dist 产物。 */
+const preparePreview = async (waitForVueBuild = false) => {
+  const codeGenType = app.value.codeGenType
+  if (!codeGenType) return
+
+  const targetUrl = getAppPreviewUrl(codeGenType, appId.value)
+  const currentCheck = ++previewCheckSequence
+  previewUrl.value = ''
+  previewError.value = ''
+
+  if (codeGenType !== CodeGenType.VUE) {
+    previewUrl.value = withCacheBuster(targetUrl)
+    return
+  }
+
+  previewBuilding.value = true
+  previewStatusText.value = waitForVueBuild
+    ? 'Vue 源码已生成，正在安装依赖并构建工程...'
+    : '正在检查 Vue 工程构建结果...'
+  const previousFingerprint = waitForVueBuild ? previewFingerprint.value : ''
+  const deadline = Date.now() + (waitForVueBuild ? VUE_PREVIEW_CHECK_TIMEOUT : 10000)
+
+  while (currentCheck === previewCheckSequence && Date.now() < deadline) {
+    const currentFingerprint = await getPreviewFingerprint(targetUrl)
+    const buildIsReady =
+      !!currentFingerprint && (!previousFingerprint || currentFingerprint !== previousFingerprint)
+    if (buildIsReady) {
+      if (currentCheck !== previewCheckSequence) return
+      previewBuilding.value = false
+      previewStatusText.value = ''
+      previewFingerprint.value = currentFingerprint
+      previewUrl.value = withCacheBuster(targetUrl)
+      if (waitForVueBuild) message.success('Vue 工程构建完成')
+      return
+    }
+    await delay(VUE_PREVIEW_CHECK_INTERVAL)
+  }
+
+  if (currentCheck !== previewCheckSequence) return
+  previewBuilding.value = false
+  previewStatusText.value = ''
+  previewError.value = waitForVueBuild
+    ? 'Vue 工程源码已生成，但构建产物暂不可用。请稍后重试预览，或检查后端构建日志。'
+    : 'Vue 工程构建产物暂不可用，可点击下方按钮重新检查。'
+}
+
+/** 手动重新检查当前应用的预览产物。 */
+const retryPreview = () => {
+  void preparePreview(false)
+}
 
 const getHistoryMessageKey = (item: API.ChatHistory) => {
   if (item.id !== undefined && item.id !== null) {
@@ -210,6 +299,10 @@ const sendMessage = (content: string) => {
   if (generating.value) {
     return
   }
+  if (previewBuilding.value) {
+    message.warning('Vue 工程仍在构建中，请构建完成后再继续修改')
+    return
+  }
   if (!isOwner.value) {
     message.warning('只能与自己创建的应用对话')
     return
@@ -228,6 +321,7 @@ const sendMessage = (content: string) => {
   scrollToBottom()
 
   generating.value = true
+  cancelPreviewCheck()
   previewUrl.value = ''
   previewError.value = ''
 
@@ -288,6 +382,7 @@ const sendMessage = (content: string) => {
 
 const failGenerate = (aiMessage: ChatMessage, reason: string) => {
   closeEventSource()
+  cancelPreviewCheck()
   aiMessage.loading = false
   generating.value = false
   previewUrl.value = ''
@@ -299,15 +394,12 @@ const failGenerate = (aiMessage: ChatMessage, reason: string) => {
   scrollToBottom()
 }
 
-// 生成结束:收尾并展示预览
+// 生成结束：普通模式直接预览，Vue 模式继续等待后端异步构建。
 const finishGenerate = (aiMessage: ChatMessage) => {
   closeEventSource()
   aiMessage.loading = false
   generating.value = false
-  // 网站文件已生成完成,展示预览
-  if (app.value.codeGenType) {
-    previewUrl.value = getAppPreviewUrl(app.value.codeGenType, appId.value)
-  }
+  void preparePreview(true)
   scrollToBottom()
 }
 
@@ -328,6 +420,10 @@ const handleSend = () => {
 const handleDeploy = async () => {
   if (!isOwner.value) {
     message.warning('只能部署自己创建的应用')
+    return
+  }
+  if (previewBuilding.value) {
+    message.warning('Vue 工程仍在构建中，请构建完成后再部署')
     return
   }
   deploying.value = true
@@ -370,7 +466,7 @@ onMounted(async () => {
   const historyCount = totalHistoryCount.value ?? historyMessageCount.value
   // 至少完成过一轮对话（用户消息 + AI 消息）时展示已生成网站。
   if (historyCount >= 2 && app.value.codeGenType) {
-    previewUrl.value = getAppPreviewUrl(app.value.codeGenType, appId.value)
+    void preparePreview(false)
   }
 
   // 仅自己的全新应用自动发送初始提示词，不再依赖 URL 查询参数。
@@ -381,6 +477,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   closeEventSource()
+  cancelPreviewCheck()
 })
 </script>
 
@@ -398,20 +495,20 @@ onBeforeUnmount(() => {
         <AppManageActions
           :app="app"
           :admin-mode="!isOwner"
-          :disabled="generating || deploying"
+          :disabled="generating || previewBuilding || deploying"
           @deleted="router.replace('/')"
         />
         <a-button
           type="primary"
           :loading="deploying"
-          :disabled="!isOwner || generating"
+          :disabled="!isOwner || generating || previewBuilding"
           class="deploy-btn"
           @click="handleDeploy"
         >
           <template #icon>
             <CloudUploadOutlined />
           </template>
-          部署
+          {{ app.codeGenType === CodeGenType.VUE ? '构建并部署' : '部署' }}
         </a-button>
       </div>
     </header>
@@ -478,7 +575,7 @@ onBeforeUnmount(() => {
               class="composer-input"
               placeholder="描述你的需求，例如：再加一个联系我们的表单板块…"
               :auto-size="{ minRows: 4, maxRows: 10 }"
-              :disabled="generating || !isOwner"
+              :disabled="generating || previewBuilding || !isOwner"
               @keydown.enter.exact.prevent="handleSend"
             />
             <a-button
@@ -486,7 +583,7 @@ onBeforeUnmount(() => {
               shape="circle"
               class="send-btn"
               :loading="generating"
-              :disabled="!isOwner || !userInput.trim()"
+              :disabled="!isOwner || previewBuilding || !userInput.trim()"
               @click="handleSend"
             >
               <template #icon>
@@ -515,12 +612,21 @@ onBeforeUnmount(() => {
             <LoadingOutlined spin class="status-icon" />
             <p>AI 正在生成网站文件,请稍候...</p>
           </div>
+          <div v-else-if="previewBuilding" class="preview-status">
+            <LoadingOutlined spin class="status-icon" />
+            <p>{{ previewStatusText }}</p>
+            <span class="preview-status-tip">首次构建可能需要几分钟，请稍候</span>
+          </div>
           <a-result
             v-else-if="previewError"
-            status="error"
-            title="网页生成失败"
+            status="warning"
+            title="预览暂不可用"
             :sub-title="previewError"
-          />
+          >
+            <template #extra>
+              <a-button type="primary" @click="retryPreview">重新检查</a-button>
+            </template>
+          </a-result>
           <iframe
             v-else-if="previewUrl"
             :src="previewUrl"
@@ -988,6 +1094,15 @@ onBeforeUnmount(() => {
 .preview-status {
   text-align: center;
   color: #6b7280;
+}
+
+.preview-status p {
+  margin: 12px 0 4px;
+}
+
+.preview-status-tip {
+  color: #9ca3af;
+  font-size: 12px;
 }
 
 .status-icon {

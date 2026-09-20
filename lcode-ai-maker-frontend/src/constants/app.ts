@@ -9,6 +9,7 @@ import { API_BASE_URL } from '@/config/env.ts'
 export enum CodeGenType {
   HTML = 'html',
   MULTI_FILE = 'multi_file',
+  VUE = 'vue_project',
 }
 
 /**
@@ -17,6 +18,7 @@ export enum CodeGenType {
 export const CODE_GEN_TYPE_OPTIONS = [
   { label: '原生 HTML 模式', value: CodeGenType.HTML },
   { label: '原生多文件模式', value: CodeGenType.MULTI_FILE },
+  { label: 'Vue 工程模式', value: CodeGenType.VUE },
 ]
 
 /**
@@ -27,6 +29,7 @@ export const CODE_GEN_TYPE_OPTIONS = [
 export const CODE_GEN_TYPE_SHORT_LABELS: Record<string, string> = {
   [CodeGenType.HTML]: 'HTML',
   [CodeGenType.MULTI_FILE]: '多文件',
+  [CodeGenType.VUE]: 'Vue 3',
 }
 
 export const getCodeGenTypeShortLabel = (value?: string) => {
@@ -50,11 +53,13 @@ export const USER_PAGE_MAX_SIZE = 20
 
 /**
  * 获取应用生成网站的预览地址
- * 规则:{apiBase}/static/{codeGenType}_{appId}/
+ * 普通模式规则：{apiBase}/static/{codeGenType}_{appId}/
+ * Vue 工程模式规则：{apiBase}/static/vue_project_{appId}/dist/index.html
  * 走相对路径，由 Vite proxy 转发到后端，免 CORS
  */
 export const getAppPreviewUrl = (codeGenType: string, appId: number | string) => {
-  return `${API_BASE_URL}/static/${codeGenType}_${appId}/`
+  const projectRoot = `${API_BASE_URL}/static/${codeGenType}_${appId}`
+  return codeGenType === CodeGenType.VUE ? `${projectRoot}/dist/index.html` : `${projectRoot}/`
 }
 
 /**

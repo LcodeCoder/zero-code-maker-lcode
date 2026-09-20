@@ -52,7 +52,12 @@ const selectedCodeGenType = ref<string>(CodeGenType.HTML)
 
 // 分段控件的选项（去掉冗长后缀，界面更紧凑）
 const codeGenTypeOptions = CODE_GEN_TYPE_OPTIONS.map((item) => ({
-  payload: item.value === CodeGenType.HTML ? '单页 HTML' : '多文件',
+  payload:
+    item.value === CodeGenType.HTML
+      ? '单页 HTML'
+      : item.value === CodeGenType.MULTI_FILE
+        ? '原生多文件'
+        : 'Vue 工程',
   value: item.value,
   title: item.label,
 }))
@@ -272,7 +277,8 @@ watch(
               <template #label="{ value, payload }">
                 <span class="mode-option">
                   <FileTextOutlined v-if="value === CodeGenType.HTML" />
-                  <FolderOpenOutlined v-else />
+                  <FolderOpenOutlined v-else-if="value === CodeGenType.MULTI_FILE" />
+                  <CodeOutlined v-else />
                   <span>{{ payload }}</span>
                 </span>
               </template>
